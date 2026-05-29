@@ -1,19 +1,6 @@
-// Controlador do semáforo
-// LEDs:
-// verde    -> D2
-// amarelo  -> D3
-// vermelho -> D4
-//
-// Comunicação com o Nano 33:
-// usa a UART padrão (pinos D0 RX / D1 TX)
-//
-// Protocolo enviado:
-// G,15
-// Y,3
-// R,12
-//
-// Comando recebido:
-// P  -> pedido de travessia
+// ======================================
+// CONTROLADOR DO SEMÁFORO
+// ======================================
 
 enum EstadoSemaforo
 {
@@ -22,164 +9,276 @@ enum EstadoSemaforo
   ESTADO_VERMELHO
 };
 
-const byte PINO_VERDE = 2;
-const byte PINO_AMARELO = 3;
+const byte PINO_VERDE    = 2;
+const byte PINO_AMARELO  = 3;
 const byte PINO_VERMELHO = 4;
 
-const int TEMPO_VERDE_PADRAO = 15;
-const int TEMPO_AMARELO = 3;
-const int TEMPO_VERMELHO = 15;
+// ======================================
+// TEMPOS
+// ======================================
 
-// Após um pedido de pedestre, o verde dos carros é encurtado,
-// mas ainda garante alguns segundos antes de mudar para amarelo.
-const int TEMPO_MINIMO_VERDE_APOS_PEDIDO = 5;
+const int TEMPO_VERDE_PADRAO   = 30;
+const int TEMPO_AMARELO        = 5;
+const int TEMPO_VERMELHO       = 15;
 
-// Envia o estado algumas vezes por segundo.
-const unsigned long INTERVALO_ENVIO_MS = 250;
+const int TEMPO_VERDE_REDUZIDO = 15;
 
-EstadoSemaforo estadoAtual = ESTADO_VERDE;
+const unsigned long
+INTERVALO_ENVIO_MS = 250;
 
-unsigned long inicioEstadoMs = 0;
+// ======================================
+
+EstadoSemaforo estadoAtual =
+  ESTADO_VERDE;
+
+unsigned long inicioEstadoMs  = 0;
 unsigned long duracaoEstadoMs = 0;
-unsigned long ultimoEnvioMs = 0;
+unsigned long ultimoEnvioMs   = 0;
 
 bool pedidoPedestrePendente = false;
 
-char estadoParaChar(EstadoSemaforo estado)
+// ======================================
+
+char estadoParaChar(
+  EstadoSemaforo estado)
 {
   switch (estado)
   {
-    case ESTADO_VERDE: return 'G';
-    case ESTADO_AMARELO: return 'Y';
-    case ESTADO_VERMELHO: return 'R';
-    default: return '?';
+    case ESTADO_VERDE:
+      return 'G';
+
+    case ESTADO_AMARELO:
+      return 'Y';
+
+    case ESTADO_VERMELHO:
+      return 'R';
   }
+
+  return '?';
 }
 
-void aplicarSaidas(EstadoSemaforo estado)
+// ======================================
+
+void aplicarSaidas()
 {
-  digitalWrite(PINO_VERDE, estado == ESTADO_VERDE ? HIGH : LOW);
-  digitalWrite(PINO_AMARELO, estado == ESTADO_AMARELO ? HIGH : LOW);
-  digitalWrite(PINO_VERMELHO, estado == ESTADO_VERMELHO ? HIGH : LOW);
+  digitalWrite(
+    PINO_VERDE,
+    estadoAtual == ESTADO_VERDE
+      ? HIGH : LOW
+  );
+
+  digitalWrite(
+    PINO_AMARELO,
+    estadoAtual == ESTADO_AMARELO
+      ? HIGH : LOW
+  );
+
+  digitalWrite(
+    PINO_VERMELHO,
+    estadoAtual == ESTADO_VERMELHO
+      ? HIGH : LOW
+  );
 }
 
-void iniciarEstado(EstadoSemaforo novoEstado)
+// ======================================
+
+int tempoRestanteSegundos()
+{
+  unsigned long agora =
+    millis();
+
+  unsigned long decorrido =
+    agora - inicioEstadoMs;
+
+  if (decorrido >= duracaoEstadoMs)
+    return 0;
+
+  unsigned long restanteMs =
+    duracaoEstadoMs - decorrido;
+
+  return
+    (int)((restanteMs + 999UL)
+    / 1000UL);
+}
+
+// ======================================
+
+void enviarEstadoAtual()
+{
+  Serial.print(
+    estadoParaChar(estadoAtual));
+
+  Serial.print(',');
+
+  Serial.println(
+    tempoRestanteSegundos());
+}
+
+// ======================================
+
+void iniciarEstado(
+  EstadoSemaforo novoEstado)
 {
   estadoAtual = novoEstado;
+
   inicioEstadoMs = millis();
 
   switch (estadoAtual)
   {
     case ESTADO_VERDE:
-      duracaoEstadoMs = (unsigned long)TEMPO_VERDE_PADRAO * 1000UL;
+
+      duracaoEstadoMs =
+        (unsigned long)
+        TEMPO_VERDE_PADRAO *
+        1000UL;
+
       break;
 
     case ESTADO_AMARELO:
-      duracaoEstadoMs = (unsigned long)TEMPO_AMARELO * 1000UL;
+
+      duracaoEstadoMs =
+        (unsigned long)
+        TEMPO_AMARELO *
+        1000UL;
+
       break;
 
     case ESTADO_VERMELHO:
-      duracaoEstadoMs = (unsigned long)TEMPO_VERMELHO * 1000UL;
-      pedidoPedestrePendente = false; // pedido atendido ao entrar no vermelho
+
+      duracaoEstadoMs =
+        (unsigned long)
+        TEMPO_VERMELHO *
+        1000UL;
+
+      pedidoPedestrePendente =
+        false;
+
       break;
   }
 
-  aplicarSaidas(estadoAtual);
+  aplicarSaidas();
+
   enviarEstadoAtual();
 }
 
-int tempoRestanteSegundos()
-{
-  unsigned long agora = millis();
-  unsigned long decorrido = agora - inicioEstadoMs;
-
-  if (decorrido >= duracaoEstadoMs)
-    return 0;
-
-  unsigned long restanteMs = duracaoEstadoMs - decorrido;
-
-  // Arredonda para cima para manter contagem humana.
-  return (int)((restanteMs + 999UL) / 1000UL);
-}
-
-void enviarEstadoAtual()
-{
-  Serial.print(estadoParaChar(estadoAtual));
-  Serial.print(',');
-  Serial.println(tempoRestanteSegundos());
-}
+// ======================================
 
 void processarComandosRecebidos()
 {
   while (Serial.available() > 0)
   {
-    char comando = Serial.read();
+    char comando =
+      Serial.read();
 
     if (comando == 'P')
     {
-      // Só faz sentido guardar pedido se ainda não está
-      // no vermelho dos carros.
-      if (estadoAtual != ESTADO_VERMELHO)
+      if (estadoAtual ==
+          ESTADO_VERDE)
       {
-        pedidoPedestrePendente = true;
+        pedidoPedestrePendente =
+          true;
       }
     }
   }
 }
 
+// ======================================
+// REDUZ VERDE 30 -> 15
+// SOMENTE ENTRE 30 E 16
+// ======================================
+
 void ajustarVerdePorPedido()
 {
-  if (estadoAtual != ESTADO_VERDE || !pedidoPedestrePendente)
+  if (!pedidoPedestrePendente)
     return;
 
-  unsigned long agora = millis();
-  unsigned long decorrido = agora - inicioEstadoMs;
-  unsigned long restanteAtualMs = (decorrido >= duracaoEstadoMs) ? 0 : (duracaoEstadoMs - decorrido);
-
-  unsigned long restanteMinimoMs = (unsigned long)TEMPO_MINIMO_VERDE_APOS_PEDIDO * 1000UL;
-
-  // Se ainda faltam mais segundos do que o mínimo desejado,
-  // encurta o verde para sobrar somente esse mínimo.
-  if (restanteAtualMs > restanteMinimoMs)
+  if (estadoAtual !=
+      ESTADO_VERDE)
   {
-    duracaoEstadoMs = decorrido + restanteMinimoMs;
+    return;
+  }
+
+  int restante =
+    tempoRestanteSegundos();
+
+  // apenas entre 30 e 16
+  if (restante >= 16)
+  {
+    unsigned long agora =
+      millis();
+
+    unsigned long decorrido =
+      agora - inicioEstadoMs;
+
+    duracaoEstadoMs =
+      decorrido +
+      ((unsigned long)
+      TEMPO_VERDE_REDUZIDO
+      * 1000UL);
+
+    pedidoPedestrePendente =
+      false;
   }
 }
 
+// ======================================
+
 void atualizarEstado()
 {
-  unsigned long agora = millis();
-  unsigned long decorrido = agora - inicioEstadoMs;
+  unsigned long agora =
+    millis();
 
-  if (decorrido < duracaoEstadoMs)
+  unsigned long decorrido =
+    agora - inicioEstadoMs;
+
+  if (decorrido <
+      duracaoEstadoMs)
+  {
     return;
+  }
 
   switch (estadoAtual)
   {
     case ESTADO_VERDE:
-      iniciarEstado(ESTADO_AMARELO);
+
+      iniciarEstado(
+        ESTADO_AMARELO);
+
       break;
 
     case ESTADO_AMARELO:
-      iniciarEstado(ESTADO_VERMELHO);
+
+      iniciarEstado(
+        ESTADO_VERMELHO);
+
       break;
 
     case ESTADO_VERMELHO:
-      iniciarEstado(ESTADO_VERDE);
+
+      iniciarEstado(
+        ESTADO_VERDE);
+
       break;
   }
 }
 
+// ======================================
+
 void enviarPeriodicamente()
 {
-  unsigned long agora = millis();
+  unsigned long agora =
+    millis();
 
-  if (agora - ultimoEnvioMs >= INTERVALO_ENVIO_MS)
+  if (agora - ultimoEnvioMs >=
+      INTERVALO_ENVIO_MS)
   {
     ultimoEnvioMs = agora;
+
     enviarEstadoAtual();
   }
 }
+
+// ======================================
 
 void setup()
 {
@@ -189,13 +288,19 @@ void setup()
 
   Serial.begin(9600);
 
-  iniciarEstado(ESTADO_VERDE);
+  iniciarEstado(
+    ESTADO_VERDE);
 }
+
+// ======================================
 
 void loop()
 {
   processarComandosRecebidos();
+
   ajustarVerdePorPedido();
+
   atualizarEstado();
+
   enviarPeriodicamente();
 }
