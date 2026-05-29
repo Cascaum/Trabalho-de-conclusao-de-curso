@@ -4,107 +4,213 @@
 #include <Serial.h>
 #include <DFRobotDFPlayerMini.h>
 
-arduino::UART semaforoSerial(digitalPinToPinName(2), digitalPinToPinName(3), NC, NC);
+// ======================================
+// UART COM SEMÁFORO
+// D2 RX
+// D3 TX
+// ======================================
+
+arduino::UART semaforoSerial(
+  digitalPinToPinName(2),
+  digitalPinToPinName(3),
+  NC,
+  NC
+);
+
+// ======================================
+// DFPLAYER
+// RX -> TX1
+// TX -> RX0
+// ======================================
 
 DFRobotDFPlayerMini player;
+
+// ======================================
 
 const byte PINO_BOTAO = 4;
 
 char corAtual = '?';
 int tempoAtual = 0;
 
-unsigned long ultimoCliqueMs = 0;
-const unsigned long INTERVALO_MINIMO_CLIQUE_MS = 4000;
-
-bool pedidoPedestreEnviado = false;
-
 String linhaRecebida = "";
 
-int arquivoContagem(int segundos)
-{
-  if (segundos < 1 || segundos > 10)
-    return 0;
+bool pedidoPedestreEnviado =
+  false;
 
-  return 13 - segundos;
+unsigned long ultimoCliqueMs =
+  0;
+
+const unsigned long
+INTERVALO_MINIMO_CLIQUE_MS =
+  4000;
+
+// timeout comunicação
+unsigned long ultimoPacoteMs =
+  0;
+
+const unsigned long
+TIMEOUT_MS = 5000;
+
+// ======================================
+// ÁUDIOS
+//
+// 001 -> Não atravesse
+// 002 -> Não atravesse.
+//        Faltam 10 segundos
+// 003 -> Não atravesse.
+//        Faltam 05 segundos
+// 004 -> Sistema fora do ar
+// 005 -> Pode atravessar
+// ======================================
+
+void tocarAudio(int numero)
+{
+  player.stop();
+
+  delay(120);
+
+  player.play(numero);
+
+  delay(80);
 }
 
-// Arquivos no cartão SD do DFPlayer:
-// 0001.mp3 -> "Pode atravessar."
-// 0002.mp3 -> "Não inicie a travessia. Aguarde o próximo ciclo."
-// 0003.mp3 -> "Restam 10 segundos."
-// 0004.mp3 -> "Restam 9 segundos."
-// 0005.mp3 -> "Restam 8 segundos."
-// 0006.mp3 -> "Restam 7 segundos."
-// 0007.mp3 -> "Restam 6 segundos."
-// 0008.mp3 -> "Restam 5 segundos."
-// 0009.mp3 -> "Restam 4 segundos."
-// 0010.mp3 -> "Restam 3 segundos."
-// 0011.mp3 -> "Restam 2 segundos."
-// 0012.mp3 -> "Resta 1 segundo."
-// 0013.mp3 -> "Aguarde para atravessar."
+// ======================================
 
 void tocarEstadoAtual()
 {
+  // timeout
+  if (millis() - ultimoPacoteMs >
+      TIMEOUT_MS)
+  {
+    tocarAudio(4);
+    return;
+  }
+
+  // ==================================
+  // VERMELHO DOS CARROS
+  // PEDESTRE PODE ATRAVESSAR
+  // ==================================
+
   if (corAtual == 'R')
   {
-    if (tempoAtual > 10)
+    // faltam 5s ou menos
+    if (tempoAtual <= 5)
     {
-      player.play(1);
+      tocarAudio(1);
+      return;
     }
-    else if (tempoAtual >= 8)
-    {
-      int arquivo = arquivoContagem(tempoAtual);
 
-      if (arquivo > 0)
-        player.play(arquivo);
-      else
-        player.play(1);
-    }
-    else
-    {
-      player.play(2);
-    }
+    tocarAudio(5);
+    return;
   }
-  else
+
+  // ==================================
+  // AMARELO
+  // ==================================
+
+  if (corAtual == 'Y')
   {
-    player.play(13);
+    tocarAudio(1);
+    return;
+  }
+
+  // ==================================
+  // VERDE DOS CARROS
+  // ==================================
+
+  if (corAtual == 'G')
+  {
+    // 10 segundos
+    if (tempoAtual == 10)
+    {
+      tocarAudio(2);
+      return;
+    }
+
+    // 5 segundos
+    if (tempoAtual == 5)
+    {
+      tocarAudio(3);
+      return;
+    }
+
+    // 9-6 segundos
+    if (tempoAtual >= 6 &&
+        tempoAtual <= 9)
+    {
+      tocarAudio(1);
+      return;
+    }
+
+    // 4-1 segundos
+    if (tempoAtual >= 1 &&
+        tempoAtual <= 4)
+    {
+      tocarAudio(1);
+      return;
+    }
+
+    // 30-11 segundos
+    tocarAudio(2);
   }
 }
+
+// ======================================
 
 void enviarPedidoPedestre()
 {
   semaforoSerial.write('P');
   semaforoSerial.write('\n');
-  pedidoPedestreEnviado = true;
+
+  pedidoPedestreEnviado =
+    true;
 }
 
-void processarLinha(const String& linha)
+// ======================================
+
+void processarLinha(
+  const String& linha)
 {
-  int separador = linha.indexOf(',');
+  int separador =
+    linha.indexOf(',');
 
   if (separador <= 0)
     return;
 
-  char novaCor = linha.charAt(0);
-  int novoTempo = linha.substring(separador + 1).toInt();
+  char novaCor =
+    linha.charAt(0);
 
-  if (novaCor != 'G' && novaCor != 'Y' && novaCor != 'R')
+  int novoTempo =
+    linha.substring(
+      separador + 1).toInt();
+
+  if (novaCor != 'G' &&
+      novaCor != 'Y' &&
+      novaCor != 'R')
+  {
     return;
+  }
 
   corAtual = novaCor;
   tempoAtual = novoTempo;
 
+  ultimoPacoteMs = millis();
+
   if (corAtual == 'R')
   {
-    pedidoPedestreEnviado = false;
+    pedidoPedestreEnviado =
+      false;
   }
 }
 
+// ======================================
+
 void lerSemaforo()
 {
-  while (semaforoSerial.available() > 0)
+  while (semaforoSerial.available())
   {
-    char c = (char)semaforoSerial.read();
+    char c =
+      (char)semaforoSerial.read();
 
     if (c == '\r')
       continue;
@@ -113,7 +219,9 @@ void lerSemaforo()
     {
       if (linhaRecebida.length() > 0)
       {
-        processarLinha(linhaRecebida);
+        processarLinha(
+          linhaRecebida);
+
         linhaRecebida = "";
       }
     }
@@ -124,54 +232,80 @@ void lerSemaforo()
   }
 }
 
+// ======================================
+
 void tratarBotao()
 {
-  static bool ultimoEstadoBotao = HIGH;
+  static bool ultimoEstadoBotao =
+    HIGH;
 
-  bool estadoAtualBotao = digitalRead(PINO_BOTAO);
+  bool estadoAtualBotao =
+    digitalRead(PINO_BOTAO);
 
-  // Acende o LED da placa enquanto o botão estiver pressionado
-  digitalWrite(LED_BUILTIN, estadoAtualBotao == LOW ? HIGH : LOW);
+  digitalWrite(
+    LED_BUILTIN,
+    estadoAtualBotao == LOW
+      ? HIGH : LOW
+  );
 
-  // Detecta o momento em que o botão foi pressionado
-  if (ultimoEstadoBotao == HIGH && estadoAtualBotao == LOW)
+  if (ultimoEstadoBotao == HIGH &&
+      estadoAtualBotao == LOW)
   {
-    unsigned long agora = millis();
+    unsigned long agora =
+      millis();
 
-    if (agora - ultimoCliqueMs >= INTERVALO_MINIMO_CLIQUE_MS)
+    if (agora - ultimoCliqueMs >=
+        INTERVALO_MINIMO_CLIQUE_MS)
     {
       ultimoCliqueMs = agora;
 
       tocarEstadoAtual();
 
-      if ((corAtual == 'G' || corAtual == 'Y') && !pedidoPedestreEnviado)
+      if ((corAtual == 'G' ||
+           corAtual == 'Y') &&
+          !pedidoPedestreEnviado)
       {
         enviarPedidoPedestre();
       }
     }
   }
 
-  ultimoEstadoBotao = estadoAtualBotao;
+  ultimoEstadoBotao =
+    estadoAtualBotao;
 }
+
+// ======================================
 
 void setup()
 {
-  pinMode(PINO_BOTAO, INPUT_PULLUP);
+  pinMode(
+    PINO_BOTAO,
+    INPUT_PULLUP);
 
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  pinMode(
+    LED_BUILTIN,
+    OUTPUT);
+
+  digitalWrite(
+    LED_BUILTIN,
+    LOW);
 
   semaforoSerial.begin(9600);
 
   Serial1.begin(9600);
-  delay(800);
+
+  delay(1000);
 
   player.begin(Serial1);
+
   player.volume(25);
 }
+
+// ======================================
 
 void loop()
 {
   lerSemaforo();
+
   tratarBotao();
 }
