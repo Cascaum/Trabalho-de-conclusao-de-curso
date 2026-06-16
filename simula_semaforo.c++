@@ -182,11 +182,6 @@ void processarComandosRecebidos()
   }
 }
 
-// ======================================
-// REDUZ VERDE 30 -> 15
-// SOMENTE ENTRE 30 E 16
-// ======================================
-
 void ajustarVerdePorPedido()
 {
   if (!pedidoPedestrePendente)
@@ -201,8 +196,8 @@ void ajustarVerdePorPedido()
   int restante =
     tempoRestanteSegundos();
 
-  // apenas entre 30 e 16
-  if (restante >= 16)
+  // apenas entre 30 e 11
+  if (restante >= 11)
   {
     unsigned long agora =
       millis();
