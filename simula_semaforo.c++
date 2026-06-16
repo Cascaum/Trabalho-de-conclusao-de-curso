@@ -19,9 +19,9 @@ const byte PINO_VERMELHO = 4;
 
 const int TEMPO_VERDE_PADRAO   = 30;
 const int TEMPO_AMARELO        = 5;
-const int TEMPO_VERMELHO       = 15;
+const int TEMPO_VERMELHO       = 30;
 
-const int TEMPO_VERDE_REDUZIDO = 15;
+const int TEMPO_VERDE_REDUZIDO = 10;
 
 const unsigned long
 INTERVALO_ENVIO_MS = 250;
