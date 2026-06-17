@@ -42,7 +42,7 @@ unsigned long ultimoCliqueMs =
 
 const unsigned long
 INTERVALO_MINIMO_CLIQUE_MS =
-  4000;
+  2000;
 
 // timeout comunicação
 unsigned long ultimoPacoteMs =
